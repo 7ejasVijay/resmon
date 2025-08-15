@@ -73,7 +73,6 @@ impl App {
         let datasets = vec![
             // Scatter chart
             Dataset::default()
-                .name("data1")
                 .marker(symbols::Marker::Braille)
                 .graph_type(GraphType::Line)
                 .style(Style::default().cyan())
@@ -84,7 +83,7 @@ impl App {
         let y_axis = Axis::default().bounds([0f64, 100f64]).style(Style::default().cyan());
 
         let chart = Chart::new(datasets)
-            .block(Block::new().title("Chart"))
+            .block(Block::bordered().title("CPU"))
             .x_axis(x_axis)
             .y_axis(y_axis);
 
