@@ -2,11 +2,11 @@ use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
-    prelude::{Constraint, Layout},
+    prelude::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     symbols,
     text::Line,
-    widgets::{Axis, Block, Chart, Dataset, GraphType},
+    widgets::{Axis, Block, Chart, Dataset, GraphType, Table, Row},
 };
 
 fn main() -> color_eyre::Result<()> {
@@ -40,8 +40,11 @@ impl App {
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         self.running = true;
         while self.running {
-            self.system.refresh_cpu_all();
             terminal.draw(|frame| {
+                if frame.count() % 60 == 0 {
+                    self.system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                }
+                self.system.refresh_cpu_all();
                 self.cpu
                     .push((frame.count() as f64, self.system.global_cpu_usage() as f64));
                 self.render(frame)
@@ -92,7 +95,27 @@ impl App {
 
         frame.render_widget(chart, first);
         //frame.render_widget(Block::bordered(), second);
-        frame.render_widget(Block::bordered(), third);
+        self.render_processes(frame, third);
+    }
+
+    fn render_processes(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        let mut rows: Vec<_> = vec![];
+        for (pid, process) in self.system.processes() {
+            let name = process.name().to_string_lossy().to_string();
+            let cpu = process.cpu_usage();
+            let row = vec![pid.to_string(), name, cpu.to_string()];
+            rows.push(row);
+        }
+
+        rows.sort_by(|a, b| {
+            let a = a[2].parse::<f32>().unwrap_or(0.0);
+            let b = b[2].parse::<f32>().unwrap_or(0.0);
+            b.partial_cmp(&a).unwrap()
+        });
+
+        let table = Table::new(rows.into_iter().map(Row::new).collect::<Vec<Row>>(), [Constraint::Max(10), Constraint::Fill(1), Constraint::Fill(1)]).block(Block::bordered().title("Processes")).header(Row::new(vec!["PID", "Name", "CPU"]).style(Style::default().bold()));
+
+        frame.render_widget(table, area);
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
