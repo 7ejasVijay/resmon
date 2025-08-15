@@ -1,11 +1,12 @@
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    prelude::{Constraint, Layout},
-    style::Stylize,
-    text::Line,
-    widgets::{Block, Paragraph},
     DefaultTerminal, Frame,
+    prelude::{Constraint, Layout},
+    style::{Style, Stylize},
+    symbols,
+    text::Line,
+    widgets::{Axis, Block, Chart, Dataset, GraphType},
 };
 
 fn main() -> color_eyre::Result<()> {
@@ -21,19 +22,29 @@ fn main() -> color_eyre::Result<()> {
 pub struct App {
     /// Is the application running?
     running: bool,
+    system: sysinfo::System,
+    cpu: Vec<(f64, f64)>,
 }
 
 impl App {
     /// Construct a new instance of [`App`].
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            running: true,
+            system: sysinfo::System::new_all(),
+            cpu: vec![],
+        }
     }
 
     /// Run the application's main loop.
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         self.running = true;
         while self.running {
-            terminal.draw(|frame| self.render(frame))?;
+            terminal.draw(|frame| {
+                self.cpu
+                    .push((frame.count() as f64, self.system.global_cpu_usage() as f64));
+                self.render(frame)
+            })?;
             self.handle_crossterm_events()?;
         }
         Ok(())
@@ -53,12 +64,33 @@ impl App {
         ])
         .areas(frame.area());
 
-        let [left, right] = Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)]).areas(second);
+        let [left, right] =
+            Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(second);
+
+        // Create the datasets to fill the chart with
+        let datasets = vec![
+            // Scatter chart
+            Dataset::default()
+                .name("data1")
+                .marker(symbols::Marker::Dot)
+                .graph_type(GraphType::Scatter)
+                .style(Style::default().cyan())
+                .data(&self.cpu),
+        ];
+
+        let x_axis = Axis::default().bounds([0f64, self.cpu.len() as f64]).style(Style::default().cyan());
+        let y_axis = Axis::default().bounds([0f64, 100f64]).style(Style::default().cyan());
+
+        let chart = Chart::new(datasets)
+            .block(Block::new().title("Chart"))
+            .x_axis(x_axis)
+            .y_axis(y_axis);
 
         frame.render_widget(Block::bordered(), left);
         frame.render_widget(Block::bordered(), right);
 
-        frame.render_widget(Block::bordered(), first);
+        frame.render_widget(chart, first);
         //frame.render_widget(Block::bordered(), second);
         frame.render_widget(Block::bordered(), third);
     }
