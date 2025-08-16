@@ -3,10 +3,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     prelude::{Constraint, Layout, Rect},
-    style::{Style, Stylize},
+    style::{Color, Style, Stylize},
     symbols,
     text::Line,
-    widgets::{Axis, Block, Chart, Dataset, GraphType, Table, Row},
+    widgets::{Axis, Block, Chart, Dataset, GraphType, Row, Table, TableState},
 };
 
 fn main() -> color_eyre::Result<()> {
@@ -24,6 +24,7 @@ pub struct App {
     running: bool,
     system: sysinfo::System,
     cpu: Vec<(f64, f64)>,
+    table_state: TableState,
 }
 
 impl App {
@@ -33,16 +34,19 @@ impl App {
             running: true,
             system: sysinfo::System::new_all(),
             cpu: vec![],
+            table_state: TableState::default(),
         }
     }
 
     /// Run the application's main loop.
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         self.running = true;
+        self.table_state.select(Some(0));
         while self.running {
             terminal.draw(|frame| {
                 if frame.count() % 60 == 0 {
-                    self.system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                    self.system
+                        .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
                 }
                 self.system.refresh_cpu_all();
                 self.cpu
@@ -82,8 +86,12 @@ impl App {
                 .data(&self.cpu),
         ];
 
-        let x_axis = Axis::default().bounds([0f64, self.cpu.len() as f64]).style(Style::default().cyan());
-        let y_axis = Axis::default().bounds([0f64, 100f64]).style(Style::default().cyan());
+        let x_axis = Axis::default()
+            .bounds([0f64, self.cpu.len() as f64])
+            .style(Style::default().cyan());
+        let y_axis = Axis::default()
+            .bounds([0f64, 100f64])
+            .style(Style::default().cyan());
 
         let chart = Chart::new(datasets)
             .block(Block::bordered().title("CPU"))
@@ -113,9 +121,20 @@ impl App {
             b.partial_cmp(&a).unwrap()
         });
 
-        let table = Table::new(rows.into_iter().map(Row::new).collect::<Vec<Row>>(), [Constraint::Max(10), Constraint::Fill(1), Constraint::Fill(1)]).block(Block::bordered().title("Processes")).header(Row::new(vec!["PID", "Name", "CPU"]).style(Style::default().bold()));
+        let table = Table::new(
+            rows.into_iter().map(Row::new).collect::<Vec<Row>>(),
+            [
+                Constraint::Max(10),
+                Constraint::Fill(1),
+                Constraint::Fill(1),
+            ],
+        )
+        .row_highlight_style(Style::default().bg(Color::DarkGray))
+        .highlight_symbol(">>")
+        .block(Block::bordered().title("Processes"))
+        .header(Row::new(vec!["PID", "Name", "CPU"]).style(Style::default().bold()));
 
-        frame.render_widget(table, area);
+        frame.render_stateful_widget(table, area, &mut self.table_state);
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
@@ -141,6 +160,12 @@ impl App {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
             // Add other key handlers here.
+            (_, KeyCode::Char('j')) => {
+                self.table_state.select_next();
+            }
+            (_, KeyCode::Char('k')) => {
+                self.table_state.select_previous();
+            }
             _ => {}
         }
     }
