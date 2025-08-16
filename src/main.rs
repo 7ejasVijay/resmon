@@ -8,6 +8,7 @@ use ratatui::{
     text::Line,
     widgets::{Axis, Block, Chart, Dataset, GraphType, Row, Table, TableState},
 };
+use tui_textarea::TextArea;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -25,6 +26,8 @@ pub struct App {
     system: sysinfo::System,
     cpu: Vec<(f64, f64)>,
     table_state: TableState,
+    textarea: TextArea<'static>,
+    search: bool,
 }
 
 impl App {
@@ -35,6 +38,12 @@ impl App {
             system: sysinfo::System::new_all(),
             cpu: vec![],
             table_state: TableState::default(),
+            textarea: {
+                let mut textarea = TextArea::default();
+                textarea.set_block(Block::bordered().title("Search"));
+                textarea
+            },
+            search: false,
         }
     }
 
@@ -104,6 +113,14 @@ impl App {
         frame.render_widget(chart, first);
         //frame.render_widget(Block::bordered(), second);
         self.render_processes(frame, third);
+
+        if self.search {
+            self.render_search(frame, right); 
+        }
+    }
+
+    fn render_search(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        frame.render_widget(&self.textarea, area);
     }
 
     fn render_processes(&mut self, frame: &mut Frame<'_>, area: Rect) {
@@ -156,6 +173,9 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     fn on_key_event(&mut self, key: KeyEvent) {
+        if self.search {
+            self.textarea.input(key);
+        }
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
@@ -165,6 +185,9 @@ impl App {
             }
             (_, KeyCode::Char('k')) => {
                 self.table_state.select_previous();
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                self.search = !self.search;
             }
             _ => {}
         }
